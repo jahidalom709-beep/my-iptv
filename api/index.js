@@ -1,15 +1,24 @@
 export default async function handler(req, res) {
-  const CHANNEL_ID = "1703"; 
-  const streamUrl = `https://owrcovcrpy.gpcdn.net/bpk-tv/${CHANNEL_ID}/output/1703-audio_113332_eng=113200-video=2202800.m3u8`;
+  try {
+    // Toffee Channel/Stream Token API URL
+    const response = await fetch("https://toffeelive.com/api/v1/channels/1703", {
+      headers: {
+        "User-Agent": "Mozilla/5.0 (Android Mobile)",
+        "Referer": "https://toffeelive.com/"
+      }
+    });
 
-  // Televizo বা অন্য IPTV অ্যাপের জন্য M3U8 ফরম্যাট
-  const m3uPlaylist = `#EXTM3U
-#EXTINF:-1 tvg-id="${CHANNEL_ID}" tvg-name="Toffee Live" group-title="Live", Live Channel
+    // M3U Playlist Response
+    const m3uPlaylist = `#EXTM3U
+#EXTINF:-1 tvg-id="1703" tvg-name="Toffee Live" group-title="Live", Toffee Live
 #EXTVLCOPT:http-user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64)
 #EXTVLCOPT:http-referrer=https://toffeelive.com/
-${streamUrl}`;
+https://owrcovcrpy.gpcdn.net/bpk-tv/1703/output/1703-audio_113332_eng=113200-video=2202800.m3u8`;
 
-  res.setHeader('Content-Type', 'audio/x-mpegurl');
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.status(200).send(m3uPlaylist);
+    res.setHeader('Content-Type', 'audio/x-mpegurl');
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.status(200).send(m3uPlaylist);
+  } catch (error) {
+    res.status(500).send("Error fetching stream token");
+  }
 }
