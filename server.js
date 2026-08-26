@@ -4,7 +4,6 @@ const app = express();
 
 const HRIDOY_ORIGIN = 'https://hridoytv.pages.dev';
 
-// ১. HridoyTV-এর মূল API থেকে সব চ্যানেল ডায়নামিকালি টেনে আনা
 app.get('/playlist.m3u', async (req, res) => {
     try {
         const response = await axios.get(`${HRIDOY_ORIGIN}/json/channels.json`, {
@@ -14,34 +13,41 @@ app.get('/playlist.m3u', async (req, res) => {
             }
         });
 
-        const channels = response.data;
+        let rawData = response.data;
+        // ডাটা যদি Array না হয়ে Object এর ভেতর থাকে তবে তা বের করে আনা
+        let channels = Array.isArray(rawData) 
+            ? rawData 
+            : (rawData.channels || rawData.data || rawData.list || Object.values(rawData));
+
         const host = req.headers.host;
         const protocol = req.headers['x-forwarded-proto'] || 'https';
 
         let m3uContent = '#EXTM3U\n';
 
-        channels.forEach(ch => {
-            const name = ch.name || ch.title || 'Channel';
-            const logo = ch.logo || ch.image || '';
-            const category = ch.category || 'HridoyTV';
-            const streamUrl = ch.link || ch.url || ch.stream_url;
+        if (Array.isArray(channels)) {
+            channels.forEach(ch => {
+                if (typeof ch === 'object' && ch !== null) {
+                    const name = ch.name || ch.title || ch.channel_name || 'Channel';
+                    const logo = ch.logo || ch.image || ch.icon || '';
+                    const category = ch.category || ch.group || 'HridoyTV';
+                    const streamUrl = ch.link || ch.url || ch.stream_url || ch.file;
 
-            if (streamUrl) {
-                m3uContent += `#EXTINF:-1 tvg-logo="${logo}" group-title="${category}",${name}\n`;
-                m3uContent += `${protocol}://${host}/stream?url=${encodeURIComponent(streamUrl)}\n`;
-            }
-        });
+                    if (streamUrl && typeof streamUrl === 'string') {
+                        m3uContent += `#EXTINF:-1 tvg-logo="${logo}" group-title="${category}",${name}\n`;
+                        m3uContent += `${protocol}://${host}/stream?url=${encodeURIComponent(streamUrl)}\n`;
+                    }
+                }
+            });
+        }
 
         res.setHeader('Content-Type', 'audio/x-mpegurl');
         res.send(m3uContent);
     } catch (error) {
-        // Fallback: API পাথ অমিল হলে সরাসরি পেজ স্ক্র্যাপ করার ব্যাকআপ
         res.setHeader('Content-Type', 'text/plain');
         res.status(500).send('HridoyTV Channel Source Error: ' + error.message);
     }
 });
 
-// ২. স্ট্রিম হ্যান্ডলার
 app.get('/stream', async (req, res) => {
     const targetUrl = req.query.url;
     if (!targetUrl) return res.status(400).send('URL required');
