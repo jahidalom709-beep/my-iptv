@@ -1,53 +1,50 @@
 const express = require('express');
 const axios = require('axios');
+const cheerio = require('cheerio');
 const app = express();
 
 const HRIDOY_ORIGIN = 'https://hridoytv.pages.dev';
 
+// ১. HridoyTV-এর পেজ স্ক্র্যাপ করে সব চ্যানেল তৈরি করা
 app.get('/playlist.m3u', async (req, res) => {
     try {
-        const response = await axios.get(`${HRIDOY_ORIGIN}/json/channels.json`, {
+        // মূল ওয়েবসাইট ফেচ করা
+        const response = await axios.get(HRIDOY_ORIGIN, {
             headers: {
-                'referer': `${HRIDOY_ORIGIN}/`,
-                'user-agent': 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36'
+                'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
             }
         });
 
-        let rawData = response.data;
-        // ডাটা যদি Array না হয়ে Object এর ভেতর থাকে তবে তা বের করে আনা
-        let channels = Array.isArray(rawData) 
-            ? rawData 
-            : (rawData.channels || rawData.data || rawData.list || Object.values(rawData));
-
+        const $ = cheerio.load(response.data);
         const host = req.headers.host;
         const protocol = req.headers['x-forwarded-proto'] || 'https';
 
         let m3uContent = '#EXTM3U\n';
 
-        if (Array.isArray(channels)) {
-            channels.forEach(ch => {
-                if (typeof ch === 'object' && ch !== null) {
-                    const name = ch.name || ch.title || ch.channel_name || 'Channel';
-                    const logo = ch.logo || ch.image || ch.icon || '';
-                    const category = ch.category || ch.group || 'HridoyTV';
-                    const streamUrl = ch.link || ch.url || ch.stream_url || ch.file;
+        // পেজের সকল চ্যানেল এলিমেন্ট খুঁজে বের করা
+        $('a, div.channel, .card').each((i, el) => {
+            const name = $(el).text().trim() || $(el).find('.title, h3, p').text().trim();
+            const logo = $(el).find('img').attr('src') || '';
+            let streamUrl = $(el).attr('href') || $(el).attr('data-url') || $(el).attr('data-stream');
 
-                    if (streamUrl && typeof streamUrl === 'string') {
-                        m3uContent += `#EXTINF:-1 tvg-logo="${logo}" group-title="${category}",${name}\n`;
-                        m3uContent += `${protocol}://${host}/stream?url=${encodeURIComponent(streamUrl)}\n`;
-                    }
+            if (streamUrl && name) {
+                if (!streamUrl.startsWith('http')) {
+                    streamUrl = new URL(streamUrl, HRIDOY_ORIGIN).href;
                 }
-            });
-        }
+                
+                m3uContent += `#EXTINF:-1 tvg-logo="${logo}" group-title="HridoyTV",${name.replace(/\n/g, ' ')}\n`;
+                m3uContent += `${protocol}://${host}/stream?url=${encodeURIComponent(streamUrl)}\n`;
+            }
+        });
 
         res.setHeader('Content-Type', 'audio/x-mpegurl');
         res.send(m3uContent);
     } catch (error) {
-        res.setHeader('Content-Type', 'text/plain');
-        res.status(500).send('HridoyTV Channel Source Error: ' + error.message);
+        res.status(500).send('Scraping Error: ' + error.message);
     }
 });
 
+// ২. স্ট্রিম হ্যান্ডলার
 app.get('/stream', async (req, res) => {
     const targetUrl = req.query.url;
     if (!targetUrl) return res.status(400).send('URL required');
@@ -59,7 +56,7 @@ app.get('/stream', async (req, res) => {
             headers: {
                 'referer': `${HRIDOY_ORIGIN}/`,
                 'origin': HRIDOY_ORIGIN,
-                'user-agent': 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36'
+                'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
             },
             responseType: 'stream'
         });
@@ -67,7 +64,7 @@ app.get('/stream', async (req, res) => {
         res.setHeader('Content-Type', 'application/x-mpegURL');
         streamResponse.data.pipe(res);
     } catch (error) {
-        res.status(500).send('Stream relay error');
+        res.status(500).send('Stream error');
     }
 });
 
