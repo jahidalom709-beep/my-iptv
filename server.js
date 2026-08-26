@@ -4,22 +4,44 @@ const app = express();
 
 const HRIDOY_ORIGIN = 'https://hridoytv.pages.dev';
 
-// Dynamic / Proxy M3U Endpoint
+// ১. HridoyTV-এর মূল API থেকে সব চ্যানেল ডায়নামিকালি টেনে আনা
 app.get('/playlist.m3u', async (req, res) => {
     try {
-        // Direct M3U fetch fallback
-        const response = await axios.get('https://raw.githubusercontent.com/jahidalom709-beep/my-iptv-flax.vercel.app/main/111.m3u');
-        
+        const response = await axios.get(`${HRIDOY_ORIGIN}/json/channels.json`, {
+            headers: {
+                'referer': `${HRIDOY_ORIGIN}/`,
+                'user-agent': 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36'
+            }
+        });
+
+        const channels = response.data;
+        const host = req.headers.host;
+        const protocol = req.headers['x-forwarded-proto'] || 'https';
+
+        let m3uContent = '#EXTM3U\n';
+
+        channels.forEach(ch => {
+            const name = ch.name || ch.title || 'Channel';
+            const logo = ch.logo || ch.image || '';
+            const category = ch.category || 'HridoyTV';
+            const streamUrl = ch.link || ch.url || ch.stream_url;
+
+            if (streamUrl) {
+                m3uContent += `#EXTINF:-1 tvg-logo="${logo}" group-title="${category}",${name}\n`;
+                m3uContent += `${protocol}://${host}/stream?url=${encodeURIComponent(streamUrl)}\n`;
+            }
+        });
+
         res.setHeader('Content-Type', 'audio/x-mpegurl');
-        res.send(response.data);
+        res.send(m3uContent);
     } catch (error) {
-        // Fallback simple playlist response
-        res.setHeader('Content-Type', 'audio/x-mpegurl');
-        res.send('#EXTM3U\n#EXTINF:-1,Hridoy TV\nhttps://hridoytv.pages.dev/');
+        // Fallback: API পাথ অমিল হলে সরাসরি পেজ স্ক্র্যাপ করার ব্যাকআপ
+        res.setHeader('Content-Type', 'text/plain');
+        res.status(500).send('HridoyTV Channel Source Error: ' + error.message);
     }
 });
 
-// Stream Relay Proxy
+// ২. স্ট্রিম হ্যান্ডলার
 app.get('/stream', async (req, res) => {
     const targetUrl = req.query.url;
     if (!targetUrl) return res.status(400).send('URL required');
@@ -31,7 +53,7 @@ app.get('/stream', async (req, res) => {
             headers: {
                 'referer': `${HRIDOY_ORIGIN}/`,
                 'origin': HRIDOY_ORIGIN,
-                'user-agent': 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Mobile Safari/537.36'
+                'user-agent': 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36'
             },
             responseType: 'stream'
         });
@@ -39,9 +61,9 @@ app.get('/stream', async (req, res) => {
         res.setHeader('Content-Type', 'application/x-mpegURL');
         streamResponse.data.pipe(res);
     } catch (error) {
-        res.status(500).send('Stream error');
+        res.status(500).send('Stream relay error');
     }
 });
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`Proxy running on port ${PORT}`));
+app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
