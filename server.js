@@ -5,13 +5,11 @@ const app = express();
 
 const HRIDOY_ORIGIN = 'https://hridoytv.pages.dev';
 
-// ১. HridoyTV-এর পেজ স্ক্র্যাপ করে সব চ্যানেল তৈরি করা
 app.get('/playlist.m3u', async (req, res) => {
     try {
-        // মূল ওয়েবসাইট ফেচ করা
         const response = await axios.get(HRIDOY_ORIGIN, {
             headers: {
-                'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+                'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
             }
         });
 
@@ -21,18 +19,23 @@ app.get('/playlist.m3u', async (req, res) => {
 
         let m3uContent = '#EXTM3U\n';
 
-        // পেজের সকল চ্যানেল এলিমেন্ট খুঁজে বের করা
-        $('a, div.channel, .card').each((i, el) => {
-            const name = $(el).text().trim() || $(el).find('.title, h3, p').text().trim();
-            const logo = $(el).find('img').attr('src') || '';
-            let streamUrl = $(el).attr('href') || $(el).attr('data-url') || $(el).attr('data-stream');
+        // অপ্রয়োজনীয় কি-ওয়ার্ডের লিস্ট যা ফিল্টার হবে
+        const ignoreList = ['telegram', 'whatsapp', 'apk', 'portal', 'github', 'gmail', 'tutorials', 'টিউটোরিয়াল', 'খুলুন'];
 
-            if (streamUrl && name) {
+        $('a, div.channel-card, .btn').each((i, el) => {
+            const name = $(el).text().trim() || $(el).attr('title') || '';
+            const logo = $(el).find('img').attr('src') || '';
+            let streamUrl = $(el).attr('href') || $(el).attr('data-url') || $(el).attr('onclick') || '';
+
+            // ওয়ান-লাইন ফিল্টারিং: অপ্রয়োজনীয় লিংক বাদ দিয়ে শুধু ভিডিও/চ্যানেল লিংক নেওয়া
+            const isInvalid = ignoreList.some(keyword => name.toLowerCase().includes(keyword) || streamUrl.toLowerCase().includes(keyword));
+
+            if (name && streamUrl && !isInvalid && !streamUrl.startsWith('#') && !streamUrl.startsWith('javascript:')) {
                 if (!streamUrl.startsWith('http')) {
                     streamUrl = new URL(streamUrl, HRIDOY_ORIGIN).href;
                 }
                 
-                m3uContent += `#EXTINF:-1 tvg-logo="${logo}" group-title="HridoyTV",${name.replace(/\n/g, ' ')}\n`;
+                m3uContent += `#EXTINF:-1 tvg-logo="${logo}" group-title="Hridoy TV",${name.replace(/\n/g, ' ')}\n`;
                 m3uContent += `${protocol}://${host}/stream?url=${encodeURIComponent(streamUrl)}\n`;
             }
         });
@@ -40,11 +43,10 @@ app.get('/playlist.m3u', async (req, res) => {
         res.setHeader('Content-Type', 'audio/x-mpegurl');
         res.send(m3uContent);
     } catch (error) {
-        res.status(500).send('Scraping Error: ' + error.message);
+        res.status(500).send('Filtering Error: ' + error.message);
     }
 });
 
-// ২. স্ট্রিম হ্যান্ডলার
 app.get('/stream', async (req, res) => {
     const targetUrl = req.query.url;
     if (!targetUrl) return res.status(400).send('URL required');
