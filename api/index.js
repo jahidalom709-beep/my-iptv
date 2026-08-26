@@ -1,24 +1,51 @@
-export default async function handler(req, res) {
-  try {
-    // Toffee Channel/Stream Token API URL
-    const response = await fetch("https://toffeelive.com/api/v1/channels/1703", {
-      headers: {
-        "User-Agent": "Mozilla/5.0 (Android Mobile)",
-        "Referer": "https://toffeelive.com/"
-      }
-    });
+const axios = require('axios');
 
-    // M3U Playlist Response
-    const m3uPlaylist = `#EXTM3U
-#EXTINF:-1 tvg-id="1703" tvg-name="Toffee Live" group-title="Live", Toffee Live
-#EXTVLCOPT:http-user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64)
-#EXTVLCOPT:http-referrer=https://toffeelive.com/
-https://owrcovcrpy.gpcdn.net/bpk-tv/1703/output/1703-audio_113332_eng=113200-video=2202800.m3u8`;
+const HRIDOY_ORIGIN = 'https://hridoytv.pages.dev';
+const GITHUB_M3U = 'https://raw.githubusercontent.com/jahidalom709-beep/my-iptv-flax.vercel.app/main/111.m3u';
 
-    res.setHeader('Content-Type', 'audio/x-mpegurl');
-    res.setHeader('Access-Control-Allow-Origin', '*');
-    res.status(200).send(m3uPlaylist);
-  } catch (error) {
-    res.status(500).send("Error fetching stream token");
-  }
-}
+module.exports = async (req, res) => {
+    const { path, query } = req;
+
+    // Stream Relay Handler
+    if (query.url) {
+        try {
+            const streamResponse = await axios({
+                method: 'get',
+                url: query.url,
+                headers: {
+                    'referer': `${HRIDOY_ORIGIN}/`,
+                    'origin': HRIDOY_ORIGIN,
+                    'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+                },
+                responseType: 'stream'
+            });
+
+            res.setHeader('Content-Type', 'application/x-mpegURL');
+            return streamResponse.data.pipe(res);
+        } catch (error) {
+            return res.status(500).send('Stream relay error');
+        }
+    }
+
+    // M3U Playlist Handler
+    try {
+        const response = await axios.get(GITHUB_M3U);
+        let rawM3u = response.data;
+        const host = req.headers.host;
+        const protocol = 'https';
+
+        let lines = rawM3u.split('\n');
+        let modifiedLines = lines.map(line => {
+            let trimmed = line.trim();
+            if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
+                return `${protocol}://${host}/api?url=${encodeURIComponent(trimmed)}`;
+            }
+            return line;
+        });
+
+        res.setHeader('Content-Type', 'audio/x-mpegurl');
+        res.send(modifiedLines.join('\n'));
+    } catch (error) {
+        res.status(500).send('Playlist fetch error');
+    }
+};
