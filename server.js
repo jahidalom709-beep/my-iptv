@@ -3,36 +3,23 @@ const axios = require('axios');
 const app = express();
 
 const HRIDOY_ORIGIN = 'https://hridoytv.pages.dev';
-const HRIDOY_WORKER = 'https://sports-play.hridoytv-master.workers.dev/proxy';
 
-// ১. Dynamic M3U Playlist Generator
+// Dynamic / Proxy M3U Endpoint
 app.get('/playlist.m3u', async (req, res) => {
     try {
-        // HridoyTV-এর আসল চ্যানেল লিস্ট API ফেচ করা
-        const response = await axios.get(`${HRIDOY_ORIGIN}/api/channels.json`, {
-            headers: {
-                'Referer': `${HRIDOY_ORIGIN}/`,
-                'User-Agent': 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36'
-            }
-        });
-
-        let m3uContent = '#EXTM3U\n';
-        const channels = response.data;
-
-        channels.forEach(ch => {
-            m3uContent += `#EXTINF:-1 tvg-logo="${ch.logo}" group-title="${ch.category}",${ch.name}\n`;
-            // আপনার সার্ভারের মাধ্যমে স্ট্রিম রিডাইরেক্ট হবে
-            m3uContent += `http://${req.headers.host}/stream?url=${encodeURIComponent(ch.stream_url)}\n`;
-        });
-
+        // Direct M3U fetch fallback
+        const response = await axios.get('https://raw.githubusercontent.com/jahidalom709-beep/my-iptv-flax.vercel.app/main/111.m3u');
+        
         res.setHeader('Content-Type', 'audio/x-mpegurl');
-        res.send(m3uContent);
+        res.send(response.data);
     } catch (error) {
-        res.status(500).send('Playlist generation failed');
+        // Fallback simple playlist response
+        res.setHeader('Content-Type', 'audio/x-mpegurl');
+        res.send('#EXTM3U\n#EXTINF:-1,Hridoy TV\nhttps://hridoytv.pages.dev/');
     }
 });
 
-// ২. Stream Proxy Handling (Auto Headers + Bypass)
+// Stream Relay Proxy
 app.get('/stream', async (req, res) => {
     const targetUrl = req.query.url;
     if (!targetUrl) return res.status(400).send('URL required');
@@ -42,10 +29,9 @@ app.get('/stream', async (req, res) => {
             method: 'get',
             url: targetUrl,
             headers: {
-                'authority': 'sports-play.hridoytv-master.workers.dev',
                 'referer': `${HRIDOY_ORIGIN}/`,
                 'origin': HRIDOY_ORIGIN,
-                'user-agent': 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36'
+                'user-agent': 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Mobile Safari/537.36'
             },
             responseType: 'stream'
         });
@@ -53,8 +39,9 @@ app.get('/stream', async (req, res) => {
         res.setHeader('Content-Type', 'application/x-mpegURL');
         streamResponse.data.pipe(res);
     } catch (error) {
-        res.status(500).send('Stream relay error');
+        res.status(500).send('Stream error');
     }
 });
 
-app.listen(3000, () => console.log('Proxy Server Running on Port 3000'));
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => console.log(`Proxy running on port ${PORT}`));
